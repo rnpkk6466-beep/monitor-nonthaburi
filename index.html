@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0b2a4a;--blue:#1e78c8;--bg:#eef3f8;--card:#fff;--ink:#16263a;--mut:#5d6f84;
+--c0:#2e9e5b;--c1:#e8b923;--c2:#ee8a2a;--c3:#d63a3a}
+*{box-sizing:border-box}
+body{margin:0;font-family:Prompt,sans-serif;background:var(--bg);color:var(--ink);padding-bottom:84px}
+header{background:var(--navy);color:#fff;padding:14px 16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+header h1{font-size:1.05rem;margin:0}header small{opacity:.7;display:block;font-size:.72rem}
+.stat{font-size:.78rem;text-align:right}.dot{color:#5be08f}.off{color:#ff8a8a}
+main{max-width:1200px;margin:auto;padding:16px}
+.demo{background:#fff3cd;border-radius:10px;padding:8px 12px;font-size:.8rem;margin-bottom:12px}
+.card{background:var(--card);border-radius:16px;box-shadow:0 4px 18px #0b2a4a14;padding:16px}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:12px 0}
+.kpi b{font-size:1.7rem;display:block}.kpi span{color:var(--mut);font-size:.8rem}
+.grid{display:grid;gap:12px;grid-template-columns:1fr}
+.dc{border-left:6px solid var(--c0);cursor:pointer;transition:transform .2s;text-align:left;border-top:0;border-right:0;border-bottom:0;font:inherit;color:inherit;min-height:44px}
+.dc:hover,.dc:focus-visible{transform:translateY(-3px)}
+.dc.s1{border-color:var(--c1)}.dc.s2{border-color:var(--c2)}.dc.s3{border-color:var(--c3)}
+.dc h3{margin:0 0 6px}.dc p{margin:2px 0;font-size:.85rem;color:var(--mut)}
+.two{display:grid;gap:12px;grid-template-columns:1fr;margin-top:16px}
+#map{height:420px;border-radius:12px}
+.rep{padding:10px 0;border-bottom:1px solid #e3eaf2;cursor:pointer}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;color:#fff}
+.t0{background:var(--c0)}.t1{background:var(--c1)}.t2{background:var(--c2)}.t3{background:var(--c3)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+select,input,textarea,button{font:inherit;min-height:44px;border-radius:10px;border:1px solid #c5d3e2;padding:6px 10px}
+button.p{background:var(--blue);color:#fff;border:0;cursor:pointer}
+.fab{position:fixed;right:16px;bottom:16px;z-index:900;background:var(--c3);color:#fff;border:0;border-radius:99px;padding:12px 20px;box-shadow:0 6px 20px #0005;cursor:pointer}
+.sk{background:linear-gradient(90deg,#e3eaf2 25%,#f3f7fb 50%,#e3eaf2 75%);background-size:200% 100%;animation:sk 1.2s infinite;border-radius:12px;height:90px}
+@keyframes sk{to{background-position:-200% 0}}
+dialog{border:0;border-radius:16px;max-width:560px;width:94%;padding:18px}
+dialog::backdrop{background:#0b2a4a88}
+form label{display:block;margin:8px 0 2px;font-size:.85rem}form input,form select,form textarea{width:100%}
+.empty{text-align:center;color:var(--mut);padding:24px}
+footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
+@media(min-width:576px){.grid{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(4,1fr)}}
+@media(min-width:992px){.grid{grid-template-columns:repeat(3,1fr)}.two{grid-template-columns:1fr 1.3fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+ <div><h1>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</h1><small>Nonthaburi Flood Monitoring &amp; Reporting Dashboard</small></div>
+ <div class="stat"><span id="online" class="dot">● ระบบออนไลน์</span><br><span id="upd">อัปเดตล่าสุด: -</span></div>
+</header>
+<main>
+ <div id="demo" class="demo" hidden>⚠️ DEMO DATA — ข้อมูลตัวอย่างเพื่อทดสอบ ไม่ใช่สถานการณ์จริง</div>
+ <div id="offline" class="demo" hidden>ไม่สามารถเชื่อมต่อข้อมูลล่าสุดได้ กำลังแสดงข้อมูลที่แคชไว้</div>
+ <section class="card" aria-label="ภาพรวมจังหวัด">
+  <h2 style="margin:0">ภาพรวมสถานการณ์น้ำท่วมจังหวัดนนทบุรี</h2>
+  <div class="kpis" id="kpis"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+  <small style="color:#5d6f84">ดัชนีสถานการณ์ (0-100): <b id="risk">-</b> — เป็นดัชนีจากข้อมูลระบบ ไม่ใช่การพยากรณ์น้ำท่วมอย่างเป็นทางการ</small>
+ </section>
+ <h2>สถานการณ์รายอำเภอ</h2>
+ <section class="grid" id="districts"><div class="sk"></div><div class="sk"></div><div class="sk"></div></section>
+ <section class="two">
+  <div class="card"><h2 style="margin-top:0">รายงานสถานการณ์ล่าสุด</h2><div id="reports"><div class="sk"></div></div></div>
+  <div class="card"><h2 style="margin-top:0">แผนที่ GIS</h2>
+   <div class="bar">
+    <select id="fd" aria-label="อำเภอ"></select>
+    <select id="fs" aria-label="สถานะ"><option value="">ทุกสถานะ</option><option>ปกติ</option><option>เฝ้าระวัง</option><option>น้ำท่วมขัง</option><option>น้ำท่วมหนัก</option><option>วิกฤต</option></select>
+    <button class="p" id="refresh">🔄 รีเฟรช</button><button id="locate">📍 ใช้ตำแหน่งของฉัน</button>
+   </div>
+   <div id="map" aria-label="แผนที่น้ำท่วม"></div>
+   <p id="near" style="font-size:.85rem"></p>
+   <small>🟢 ปกติ 🟡 เฝ้าระวัง 🟠 น้ำท่วม 🔴 หนัก/วิกฤต 🟣 GISTDA</small>
+  </div>
+ </section>
+</main>
+<footer>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขังจังหวัดนนทบุรี<br>ข้อมูลประกอบการติดตามสถานการณ์ ไม่ใช่ประกาศเตือนภัยอย่างเป็นทางการ · Data: GISTDA, OpenStreetMap</footer>
+<button class="fab" id="fab">+ รายงานน้ำท่วม</button>
+
+<dialog id="dlg"><div id="dbody"></div><button onclick="dlg.close()">ปิด</button></dialog>
+<dialog id="frm"><form id="rf">
+ <h3 style="margin-top:0">รายงานน้ำท่วม</h3>
+ <label>ชื่อผู้รายงาน<input name="reporterName" maxlength="80" required></label>
+ <label>เบอร์โทรศัพท์<input name="phone" inputmode="tel" pattern="0[0-9]{8,9}" required></label>
+ <label>อำเภอ<select name="district" id="rdist" required></select></label>
+ <label>ตำบล<input name="subDistrict" maxlength="80"></label>
+ <label>สถานที่<input name="locationName" maxlength="150" required></label>
+ <label>รายละเอียด<textarea name="description" maxlength="500" required></textarea></label>
+ <label>ระดับน้ำ<select name="waterLevel"><option>ไม่มีน้ำ</option><option>น้อยกว่า 10 ซม.</option><option>10-30 ซม.</option><option>31-50 ซม.</option><option>51-100 ซม.</option><option>มากกว่า 100 ซม.</option></select></label>
+ <label>สถานการณ์<select name="waterStatus"><option>ปกติ</option><option>เฝ้าระวัง</option><option selected>น้ำท่วมขัง</option><option>น้ำท่วมหนัก</option><option>วิกฤต</option></select></label>
+ <label>รูปภาพ (ย่อให้อัตโนมัติ)<input type="file" id="photo" accept="image/*"></label>
+ <p><button type="button" id="gps">📍 ใช้ตำแหน่งปัจจุบัน</button> <span id="coord">ยังไม่ได้ระบุพิกัด</span></p>
+ <button class="p" type="submit">ส่งรายงาน</button> <button type="button" onclick="frm.close()">ยกเลิก</button>
+</form></dialog>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+/* ================= CONFIG ================= */
+const CONFIG={API_URL:'https://script.google.com/macros/s/AKfycbz-IfZeArtR3gSffaR1nq2epS7_b_UCDg9kzD6J-YXTIy_VwYn4NshMbE4aaP5FNk5iag/exec',DEFAULT_LAT:13.8621,DEFAULT_LNG:100.5144,DEFAULT_ZOOM:11,
+ DEMO_MODE:true,REFRESH_MS:60000,COOLDOWN_MS:120000,MAX_PHOTO_PX:1280};
+const DISTRICTS=[['เมืองนนทบุรี',13.8591,100.5217],['บางกรวย',13.8160,100.4850],['บางใหญ่',13.8590,100.4090],['บางบัวทอง',13.9100,100.4250],['ไทรน้อย',13.9930,100.3300],['ปากเกร็ด',13.9130,100.5000]];
+const LV={'ไม่มีน้ำ':0,'น้อยกว่า 10 ซม.':5,'10-30 ซม.':20,'31-50 ซม.':40,'51-100 ซม.':75,'มากกว่า 100 ซม.':120};
+const ST={'ปกติ':0,'เฝ้าระวัง':1,'น้ำท่วมขัง':2,'น้ำท่วมหนัก':3,'วิกฤต':3};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let reports=[],map,layer,gistda,coord=null,userLL=null;
+
+/* ============== DEMO DATA ============== */
+function demo(){const n=Date.now();const d=(i,m,l,s,la,ln,loc)=>({ID:'D'+i,Timestamp:new Date(n-m*60000).toISOString(),District:DISTRICTS[i%6][0],SubDistrict:'-',LocationName:loc,Description:'DEMO DATA',WaterLevel:l,WaterStatus:s,Latitude:la,Longitude:ln,Source:'ประชาชน',Verified:true,Status:'ยืนยันแล้ว'});
+ return[d(3,20,'31-50 ซม.','น้ำท่วมหนัก',13.915,100.43,'ตัวอย่าง จุดที่ 1'),d(5,70,'10-30 ซม.','น้ำท่วมขัง',13.91,100.5,'ตัวอย่าง จุดที่ 2'),d(2,300,'น้อยกว่า 10 ซม.','เฝ้าระวัง',13.86,100.41,'ตัวอย่าง จุดที่ 3')];}
+
+/* ============== API ============== */
+async function api(action,params={},post=false){
+ if(CONFIG.DEMO_MODE||CONFIG.API_URL.startsWith('YOUR_'))throw new Error('demo');
+ const q=new URLSearchParams({action,...params});
+ const opt=post?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,...params})}:{};
+ const r=await fetch(post?CONFIG.API_URL:CONFIG.API_URL+'?'+q,opt);
+ const j=await r.json();if(!j.success)throw new Error(j.message);return j.data;}
+
+async function load(){
+ try{reports=await api('getReports',{pageSize:200});localStorage.setItem('fl_cache',JSON.stringify(reports));$('demo').hidden=true;$('offline').hidden=true;$('online').className='dot';}
+ catch(e){
+  if(e.message==='demo'){reports=demo();$('demo').hidden=false;}
+  else{const c=localStorage.getItem('fl_cache');reports=c?JSON.parse(c):[];$('offline').hidden=false;$('online').textContent='● ออฟไลน์';$('online').className='off';}
+ }
+ $('upd').textContent='อัปเดตล่าสุด: '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
+ render();loadGistda();}
+
+async function loadGistda(){
+ if(CONFIG.DEMO_MODE)return;
+ try{gistda=await api('getGistdaFlood',{range:'1day'});drawMap();}
+ catch(e){Swal.fire({toast:true,position:'top',timer:3000,showConfirmButton:false,icon:'warning',title:'ไม่สามารถโหลดข้อมูล GISTDA ได้ในขณะนี้'});}}
+
+/* ============== RENDER ============== */
+const lvl=r=>LV[r.WaterLevel]??0, sc=r=>ST[r.WaterStatus]??0;
+const hhmm=t=>new Date(t).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
+function filtered(){const d=$('fd').value,s=$('fs').value;return reports.filter(r=>(!d||r.District===d)&&(!s||r.WaterStatus===s));}
+function riskScore(){const now=Date.now();let s=0;reports.forEach(r=>{const age=(now-new Date(r.Timestamp))/36e5;if(age<24)s+=(sc(r)*8+Math.min(lvl(r)/5,15))*(age<6?1:.5);});return Math.min(100,Math.round(s));}
+function render(){
+ const aff=new Set(reports.filter(r=>sc(r)>0).map(r=>r.District)).size;
+ const k=[['🌊',reports.length,'จุดรายงาน'],['📍',aff,'อำเภอได้รับผลกระทบ'],['⚠️',reports.filter(r=>sc(r)==1).length,'เฝ้าระวัง'],['🔴',reports.filter(r=>sc(r)==3).length,'น้ำท่วมหนัก/วิกฤต']];
+ $('kpis').innerHTML=k.map(x=>`<div class="card kpi">${x[0]}<b>${x[1]}</b><span>${x[2]}</span></div>`).join('');
+ $('risk').textContent=riskScore();
+ $('districts').innerHTML=DISTRICTS.map(([n])=>{const rs=reports.filter(r=>r.District===n);const mx=Math.max(0,...rs.map(sc));const ml=Math.max(0,...rs.map(lvl));
+  const names=['ปกติ','เฝ้าระวัง','น้ำท่วม','น้ำท่วมหนัก'];
+  return`<button class="card dc s${mx}" data-d="${esc(n)}"><h3>🌊 ${esc(n)}</h3><p>${names[mx]}</p><p>${rs.length} จุดรายงาน · ระดับสูงสุด ${ml} ซม.</p></button>`;}).join('');
+ document.querySelectorAll('.dc').forEach(b=>b.onclick=()=>{$('fd').value=b.dataset.d;render();$('map').scrollIntoView({behavior:'smooth'});});
+ const list=filtered().sort((a,b)=>new Date(b.Timestamp)-new Date(a.Timestamp)).slice(0,20);
+ $('reports').innerHTML=list.length?list.map(r=>`<div class="rep" tabindex="0" data-id="${esc(r.ID)}"><span class="tag t${sc(r)}">${esc(r.WaterStatus)}</span> ${hhmm(r.Timestamp)}<br><b>${esc(r.District)}</b> ${esc(r.LocationName)}<br><small>ระดับน้ำ ${esc(r.WaterLevel)} · ${esc(r.Source)} · ${r.Verified?'ยืนยันแล้ว':esc(r.Status)}</small></div>`).join(''):'<div class="empty">🌤️<br>ยังไม่มีรายงานน้ำท่วมในพื้นที่นี้</div>';
+ document.querySelectorAll('.rep').forEach(e=>e.onclick=()=>detail(e.dataset.id));
+ drawMap();}
+function detail(id){const r=reports.find(x=>x.ID===id);if(!r)return;
+ $('dbody').innerHTML=`<h3>${esc(r.LocationName)}</h3><p>${esc(r.District)} ต.${esc(r.SubDistrict)}<br>ระดับน้ำ: ${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>เวลา: ${hhmm(r.Timestamp)}<br>พิกัด: ${esc(r.Latitude)}, ${esc(r.Longitude)}<br>แหล่งข้อมูล: ${esc(r.Source)} · ${esc(r.Status)}</p>${/^https:\/\//.test(r.PhotoURL||'')?`<img src="${esc(r.PhotoURL)}" alt="รูปน้ำท่วม" style="max-width:100%;border-radius:10px">`:''}<p>${esc(r.Description)}</p><small>ข้อมูลอาจมีความคลาดเคลื่อนตามเวลาและวิธีการตรวจวัด</small><br>`;
+ $('dlg').showModal();map.setView([r.Latitude,r.Longitude],15);}
+
+/* ============== MAP ============== */
+function initMap(){map=L.map('map').setView([CONFIG.DEFAULT_LAT,CONFIG.DEFAULT_LNG],CONFIG.DEFAULT_ZOOM);
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);layer=L.layerGroup().addTo(map);}
+function drawMap(){if(!map)return;layer.clearLayers();const col=['#2e9e5b','#e8b923','#ee8a2a','#d63a3a'];
+ filtered().forEach(r=>{if(!isFinite(r.Latitude))return;L.circleMarker([r.Latitude,r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9}).addTo(layer)
+  .bindPopup(`<b>${esc(r.LocationName)}</b><br>${esc(r.District)}<br>${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>${hhmm(r.Timestamp)} · ${esc(r.Source)}`);});
+ if(gistda&&gistda.type==='FeatureCollection')L.geoJSON(gistda,{style:{color:'#8e44ad',weight:1,fillOpacity:.35}}).addTo(layer);}
+
+/* ============== GEO / NEARBY (Haversine) ============== */
+const hav=(a,b,c,d)=>{const R=6371,t=x=>x*Math.PI/180,dl=t(c-a),dn=t(d-b);const h=Math.sin(dl/2)**2+Math.cos(t(a))*Math.cos(t(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
+$('locate').onclick=()=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>{userLL=[p.coords.latitude,p.coords.longitude];
+ L.marker(userLL).addTo(map).bindPopup('คุณอยู่ที่นี่');map.setView(userLL,14);
+ const n=reports.filter(r=>sc(r)>0&&hav(userLL[0],userLL[1],r.Latitude,r.Longitude)<=3).length;
+ $('near').textContent=n?`พบรายงานน้ำท่วมใกล้คุณ ${n} จุด (ในรัศมี 3 กม.)`:'ไม่พบรายงานน้ำท่วมในรัศมี 3 กม.';},()=>Swal.fire('ไม่สามารถอ่านตำแหน่งได้','โปรดอนุญาตการเข้าถึงตำแหน่ง','info')):0;
+
+/* ============== REPORT FORM ============== */
+$('fab').onclick=()=>{$('frm').showModal();};
+$('gps').onclick=()=>navigator.geolocation.getCurrentPosition(p=>{coord=[p.coords.latitude,p.coords.longitude];$('coord').textContent=coord.map(v=>v.toFixed(5)).join(', ');},()=>Swal.fire('ไม่สามารถอ่านตำแหน่งได้','','info'));
+function compress(file){return new Promise(res=>{if(!file)return res('');const img=new Image();img.onload=()=>{const k=Math.min(1,CONFIG.MAX_PHOTO_PX/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=img.width*k;c.height=img.height*k;c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.7));};img.src=URL.createObjectURL(file);});}
+$('rf').onsubmit=async e=>{e.preventDefault();
+ const last=+localStorage.getItem('fl_last')||0;
+ if(Date.now()-last<CONFIG.COOLDOWN_MS)return Swal.fire('กรุณารอสักครู่','ส่งรายงานได้ทุก 2 นาที','warning');
+ if(!coord)return Swal.fire('ยังไม่มีพิกัด','กด "ใช้ตำแหน่งปัจจุบัน" ก่อนส่ง','warning');
+ const data=Object.fromEntries(new FormData($('rf')));delete data.undefined;delete data.photo;
+ data.latitude=coord[0];data.longitude=coord[1];data.photoBase64=await compress($('photo').files[0]);
+ try{await api('submitReport',data,true);localStorage.setItem('fl_last',Date.now());$('frm').close();$('rf').reset();coord=null;Swal.fire('ส่งรายงานแล้ว','รอเจ้าหน้าที่ตรวจสอบ','success');load();}
+ catch(err){Swal.fire(err.message==='demo'?'โหมด DEMO':'ส่งไม่สำเร็จ',err.message==='demo'?'ตั้งค่า API_URL และ DEMO_MODE=false ก่อน':err.message,'error');}};
+
+/* ============== INIT ============== */
+$('fd').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
+$('rdist').innerHTML=DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
+$('fd').onchange=$('fs').onchange=render;$('refresh').onclick=load;
+initMap();load();setInterval(load,CONFIG.REFRESH_MS);
+</script>
+</body>
+</html>
