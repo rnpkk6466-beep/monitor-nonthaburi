@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -157,7 +158,11 @@ function detail(id){const r=reports.find(x=>x.ID===id);if(!r)return;
 
 /* ============== MAP ============== */
 function initMap(){map=L.map('map').setView([CONFIG.DEFAULT_LAT,CONFIG.DEFAULT_LNG],CONFIG.DEFAULT_ZOOM);
- L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);layer=L.layerGroup().addTo(map);}
+ const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
+ let errs=0,swapped=false;
+ osm.on('tileerror',()=>{if(++errs>=3&&!swapped){swapped=true;map.removeLayer(osm); /* fallback if OSM blocks the tiles */
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap contributors © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);}});
+ layer=L.layerGroup().addTo(map);}
 function drawMap(){if(!map)return;layer.clearLayers();const col=['#2e9e5b','#e8b923','#ee8a2a','#d63a3a'];
  filtered().forEach(r=>{if(!isFinite(r.Latitude))return;L.circleMarker([r.Latitude,r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9}).addTo(layer)
   .bindPopup(`<b>${esc(r.LocationName)}</b><br>${esc(r.District)}<br>${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>${hhmm(r.Timestamp)} · ${esc(r.Source)}`);});
