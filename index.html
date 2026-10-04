@@ -44,6 +44,9 @@ dialog::backdrop{background:#0b2a4a88}
 form label{display:block;margin:8px 0 2px;font-size:.85rem}form input,form select,form textarea{width:100%}
 .empty{text-align:center;color:var(--mut);padding:24px}
 #abody table{width:100%;border-collapse:collapse;font-size:.8rem}#abody th,#abody td{padding:6px;border-bottom:1px solid #e3eaf2;text-align:left;vertical-align:top}#abody button{min-height:36px;padding:2px 8px;margin:2px}
+#sres button{display:block;width:100%;text-align:left;background:#fff;margin:2px 0;cursor:pointer}
+.stats{display:grid;gap:12px;grid-template-columns:1fr;margin-top:16px}.cv{position:relative;height:240px}
+@media(min-width:992px){.stats{grid-template-columns:1fr 1fr}}
 footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
 @media(min-width:576px){.grid{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(4,1fr)}}
 @media(min-width:992px){.grid{grid-template-columns:repeat(3,1fr)}.two{grid-template-columns:1fr 1.3fr}}
@@ -65,6 +68,11 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
  </section>
  <h2>สถานการณ์รายอำเภอ</h2>
  <section class="grid" id="districts"><div class="sk"></div><div class="sk"></div><div class="sk"></div></section>
+ <h2>สถิติรายงาน</h2>
+ <section class="stats" aria-label="สถิติ">
+  <div class="card"><h3 style="margin-top:0">รายงานรายวัน (7 วันย้อนหลัง)</h3><div class="cv"><canvas id="cDay" role="img" aria-label="กราฟรายงานรายวัน"></canvas></div></div>
+  <div class="card"><h3 style="margin-top:0">จำนวนรายงานต่ออำเภอ</h3><div class="cv"><canvas id="cDist" role="img" aria-label="กราฟรายงานต่ออำเภอ"></canvas></div></div>
+ </section>
  <section class="two">
   <div class="card"><h2 style="margin-top:0">รายงานสถานการณ์ล่าสุด</h2><div id="reports"><div class="sk"></div></div></div>
   <div class="card"><h2 style="margin-top:0">แผนที่ GIS</h2>
@@ -73,6 +81,8 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
     <select id="fs" aria-label="สถานะ"><option value="">ทุกสถานะ</option><option>ปกติ</option><option>เฝ้าระวัง</option><option>น้ำท่วมขัง</option><option>น้ำท่วมหนัก</option><option>วิกฤต</option></select>
     <button class="p" id="refresh">🔄 รีเฟรช</button><button id="locate">📍 ใช้ตำแหน่งของฉัน</button>
    </div>
+   <form class="bar" id="sform" role="search"><input id="sq" type="search" placeholder="ค้นหาสถานที่ ตำบล อำเภอ ถนน" aria-label="ค้นหา" style="flex:1;min-width:160px" maxlength="80"><button class="p" type="submit">ค้นหา</button></form>
+   <div id="sres" aria-live="polite"></div>
    <div class="bar" id="glayers" role="group" aria-label="เลเยอร์ GISTDA" style="font-size:.85rem;align-items:center">
     <b style="color:#8e44ad">🟣 GISTDA:</b>
     <label><input type="checkbox" data-p="1day" checked> 1 วัน</label>
@@ -121,6 +131,7 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
  <button onclick="adm.close()">ปิด</button>
 </dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 /* Nonthaburi district boundaries (also provided as nonthaburi-districts.geojson) */
@@ -133,7 +144,7 @@ const LV={'ไม่มีน้ำ':0,'น้อยกว่า 10 ซม.':5,'
 const ST={'ปกติ':0,'เฝ้าระวัง':1,'น้ำท่วมขัง':2,'น้ำท่วมหนัก':3,'วิกฤต':3};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let reports=[],map,layer,gistda,coord=null,userLL=null;
+let reports=[],map,layer,gistda,coord=null,userLL=null,distLayer,searchMarker,chD,chS;
 
 /* ============== DEMO DATA ============== */
 function demo(){const n=Date.now();const d=(i,m,l,s,la,ln,loc)=>({ID:'D'+i,Timestamp:new Date(n-m*60000).toISOString(),District:DISTRICTS[i%6][0],SubDistrict:'-',LocationName:loc,Description:'DEMO DATA',WaterLevel:l,WaterStatus:s,Latitude:la,Longitude:ln,Source:'ประชาชน',Verified:true,Status:'ยืนยันแล้ว'});
@@ -175,7 +186,7 @@ function render(){
  const list=filtered().sort((a,b)=>new Date(b.Timestamp)-new Date(a.Timestamp)).slice(0,20);
  $('reports').innerHTML=list.length?list.map(r=>`<div class="rep" tabindex="0" data-id="${esc(r.ID)}"><span class="tag t${sc(r)}">${esc(r.WaterStatus)}</span> ${hhmm(r.Timestamp)}<br><b>${esc(r.District)}</b> ${esc(r.LocationName)}<br><small>ระดับน้ำ ${esc(r.WaterLevel)} · ${esc(r.Source)} · ${r.Verified?'ยืนยันแล้ว':esc(r.Status)}</small></div>`).join(''):'<div class="empty">🌤️<br>ยังไม่มีรายงานน้ำท่วมในพื้นที่นี้</div>';
  document.querySelectorAll('.rep').forEach(e=>e.onclick=()=>detail(e.dataset.id));
- drawMap();}
+ drawMap();drawCharts();}
 function detail(id){const r=reports.find(x=>x.ID===id);if(!r)return;
  $('dbody').innerHTML=`<h3>${esc(r.LocationName)}</h3><p>${esc(r.District)} ต.${esc(r.SubDistrict)}<br>ระดับน้ำ: ${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>เวลา: ${hhmm(r.Timestamp)}<br>พิกัด: ${esc(r.Latitude)}, ${esc(r.Longitude)}<br>แหล่งข้อมูล: ${esc(r.Source)} · ${esc(r.Status)}</p>${/^https:\/\//.test(r.PhotoURL||'')?`<img src="${esc(r.PhotoURL)}" alt="รูปน้ำท่วม" style="max-width:100%;border-radius:10px">`:''}<p>${esc(r.Description)}</p><small>ข้อมูลอาจมีความคลาดเคลื่อนตามเวลาและวิธีการตรวจวัด</small><br>`;
  $('dlg').showModal();map.setView([r.Latitude,r.Longitude],15);}
@@ -187,11 +198,11 @@ function initMap(){map=L.map('map').setView([CONFIG.DEFAULT_LAT,CONFIG.DEFAULT_L
  osm.on('tileerror',()=>{if(++errs>=3&&!swapped){swapped=true;map.removeLayer(osm); /* fallback if OSM blocks the tiles */
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap contributors © CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);}});
  /* District boundaries (Nonthaburi, 6 amphoe) - source: OpenGISData-Thailand, see README */
- const bounds=L.geoJSON(NB_GEO,{style:{color:'#0b2a4a',weight:2,fillColor:'#1e78c8',fillOpacity:.04},
+ distLayer=L.geoJSON(NB_GEO,{style:{color:'#0b2a4a',weight:2,fillColor:'#1e78c8',fillOpacity:.04},
   onEachFeature:(f,l)=>{l.bindTooltip(f.properties.name,{sticky:true});
    l.on({mouseover:()=>l.setStyle({fillOpacity:.18}),mouseout:()=>l.setStyle({fillOpacity:.04}),
     click:()=>{$('fd').value=f.properties.name;render();}});}}).addTo(map);
- map.fitBounds(bounds.getBounds());
+ map.fitBounds(distLayer.getBounds());
  layer=L.layerGroup().addTo(map);}
 function drawMap(){if(!map)return;layer.clearLayers();const col=['#2e9e5b','#e8b923','#ee8a2a','#d63a3a'];
  filtered().forEach(r=>{if(!isFinite(r.Latitude))return;L.circleMarker([r.Latitude,r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9}).addTo(layer)
@@ -258,6 +269,51 @@ $('rf').onsubmit=async e=>{e.preventDefault();
   await reopen({icon:'error',title:demoMsg?'ยังเป็นโหมด DEMO':'ส่งรายงานไม่สำเร็จ',text:demoMsg?'ตั้งค่า API_URL และ DEMO_MODE=false ใน index.html ก่อน':(err.message==='Failed to fetch'?'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตและ API_URL':err.message)});
  }finally{btn.disabled=false;}};
 
+
+
+/* ============== CHARTS (Chart.js) ============== */
+function upsert(ch,id,type,labels,data,label,color){
+ if(ch){ch.data.labels=labels;ch.data.datasets[0].data=data;ch.update();return ch;}
+ return new Chart($(id),{type,data:{labels,datasets:[{label,data,backgroundColor:color,borderColor:color,borderRadius:6,tension:.3}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}});}
+function drawCharts(){
+ if(!window.Chart)return; // CDN unavailable: skip charts, rest of the page keeps working
+ const key=d=>d.toLocaleDateString('en-CA');
+ const days=[...Array(7)].map((_,i)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(6-i));return d;});
+ chD=upsert(chD,'cDay','bar',days.map(d=>d.toLocaleDateString('th-TH',{day:'numeric',month:'short'})),
+  days.map(d=>reports.filter(r=>key(new Date(r.Timestamp))===key(d)).length),'รายงาน','#1e78c8');
+ chS=upsert(chS,'cDist','bar',DISTRICTS.map(d=>d[0]),DISTRICTS.map(d=>reports.filter(r=>r.District===d[0]).length),'รายงาน','#0b2a4a');}
+
+/* ============== SEARCH ============== */
+let SR=[];const norm=s=>String(s||'').toLowerCase().trim();
+function flyTo(r){
+ if(searchMarker)map.removeLayer(searchMarker);
+ if(r.district){distLayer.eachLayer(l=>{if(l.feature.properties.name===r.district)map.fitBounds(l.getBounds());});return;}
+ map.setView(r.ll,r.z||16);
+ searchMarker=L.marker(r.ll).addTo(map).bindPopup(esc(r.t)).openPopup();}
+function showResults(extra){
+ const box=$('sres');
+ box.innerHTML=(SR.length?SR.map((r,i)=>`<button type="button" data-i="${i}">📍 ${esc(r.t)}</button>`).join(''):'<div class="empty" style="padding:8px">ไม่พบในรายงานของระบบ</div>')
+  +(extra===false?'':'<button type="button" data-osm="1">🔍 ค้นหาชื่อถนน/สถานที่ในแผนที่ (OpenStreetMap)</button>');}
+function localSearch(q){
+ q=norm(q);if(q.length<2){SR=[];$('sres').innerHTML='';return;}
+ SR=DISTRICTS.filter(d=>norm(d[0]).includes(q)).map(d=>({t:'อำเภอ'+d[0],district:d[0]}));
+ reports.forEach(r=>{if(isFinite(r.Latitude)&&[r.LocationName,r.SubDistrict,r.District,r.Description].some(x=>norm(x).includes(q)))SR.push({t:r.LocationName+' · '+r.District,ll:[+r.Latitude,+r.Longitude],z:16});});
+ SR=SR.slice(0,6);showResults();}
+let sT;$('sq').oninput=()=>{clearTimeout(sT);sT=setTimeout(()=>localSearch($('sq').value),250);}; // debounce
+$('sform').onsubmit=e=>{e.preventDefault();localSearch($('sq').value);};
+async function osmSearch(q){
+ // Nominatim: only on explicit click (no autocomplete), limited to the Nonthaburi bounding box
+ $('sres').innerHTML='<div class="sk" style="height:48px"></div>';
+ try{
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=th&bounded=1&viewbox=100.26,14.14,100.57,13.78&accept-language=th&q='+encodeURIComponent(q));
+  const j=await r.json();
+  SR=j.map(x=>({t:x.display_name.split(',').slice(0,3).join(','),ll:[+x.lat,+x.lon],z:17}));
+  showResults(false);if(!SR.length)$('sres').innerHTML='<div class="empty" style="padding:8px">ไม่พบสถานที่นี้ในจังหวัดนนทบุรี</div>';
+ }catch(e){$('sres').innerHTML='<div class="empty" style="padding:8px">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</div>';}}
+$('sres').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.osm)return osmSearch($('sq').value.trim());
+ const r=SR[+b.dataset.i];if(r){flyTo(r);$('map').scrollIntoView({behavior:'smooth',block:'center'});}};
 
 /* ============== ADMIN ============== */
 let TOK=sessionStorage.getItem('fl_tok')||'',AROWS=[],AROLE=sessionStorage.getItem('fl_role')||'';
