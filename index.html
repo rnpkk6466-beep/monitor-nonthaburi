@@ -193,7 +193,14 @@ $('rf').onsubmit=async e=>{e.preventDefault();
  Swal.fire({title:'กำลังบันทึกข้อมูล...',html:'กรุณารอสักครู่ อย่าปิดหน้านี้',allowOutsideClick:false,allowEscapeKey:false,showConfirmButton:false,didOpen:()=>Swal.showLoading()});
  try{
   data.photoBase64=await compress($('photo').files[0]);
-  await api('submitReport',data,true);
+  try{await api('submitReport',data,true);}
+  catch(e2){
+   if(!String(e2.message).includes('มีรายงานล่าสุดแล้ว'))throw e2;
+   const c=await Swal.fire({icon:'question',title:'พื้นที่นี้มีรายงานล่าสุดแล้ว',text:'ต้องการส่งรายงานเพิ่มเติมซ้ำหรือไม่?',showCancelButton:true,confirmButtonText:'ส่งเพิ่ม',cancelButtonText:'ยกเลิก'});
+   if(!c.isConfirmed){$('frm').showModal();return;}
+   Swal.fire({title:'กำลังบันทึกข้อมูล...',allowOutsideClick:false,allowEscapeKey:false,showConfirmButton:false,didOpen:()=>Swal.showLoading()});
+   await api('submitReport',{...data,confirmDuplicate:true},true);
+  }
   localStorage.setItem('fl_last',Date.now());$('rf').reset();coord=null;$('coord').textContent='ยังไม่ได้ระบุพิกัด';
   await Swal.fire({icon:'success',title:'ส่งรายงานเรียบร้อย',text:'ขอบคุณครับ รอเจ้าหน้าที่ตรวจสอบ'});load();
  }catch(err){
