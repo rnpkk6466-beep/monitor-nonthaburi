@@ -72,6 +72,13 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
  <section class="stats" aria-label="สถิติ">
   <div class="card"><h3 style="margin-top:0">รายงานรายวัน (7 วันย้อนหลัง)</h3><div class="cv"><canvas id="cDay" role="img" aria-label="กราฟรายงานรายวัน"></canvas></div></div>
   <div class="card"><h3 style="margin-top:0">จำนวนรายงานต่ออำเภอ</h3><div class="cv"><canvas id="cDist" role="img" aria-label="กราฟรายงานต่ออำเภอ"></canvas></div></div>
+  <div class="card" style="grid-column:1/-1">
+   <div class="bar" style="justify-content:space-between;align-items:center"><h3 style="margin:0">สัดส่วนรายงานแต่ละอำเภอ</h3>
+    <select id="pst" aria-label="เลือกสถานะ"><option value="">ทุกสถานะ</option><option>ปกติ</option><option>เฝ้าระวัง</option><option>น้ำท่วมขัง</option><option>น้ำท่วมหนัก</option><option>วิกฤต</option></select></div>
+   <div class="cv" style="height:300px"><canvas id="cPie" role="img" aria-label="กราฟโดนัทสัดส่วนรายงานแต่ละอำเภอ"></canvas></div>
+   <div id="pEmpty" class="empty" hidden>🌤️<br>ยังไม่มีรายงานในสถานะนี้</div>
+   <p id="pTot" style="text-align:center;margin:6px 0 0;color:#5d6f84;font-size:.85rem"></p>
+  </div>
  </section>
  <section class="two">
   <div class="card"><h2 style="margin-top:0">รายงานสถานการณ์ล่าสุด</h2><div id="reports"><div class="sk"></div></div></div>
@@ -272,6 +279,7 @@ $('rf').onsubmit=async e=>{e.preventDefault();
 
 
 /* ============== CHARTS (Chart.js) ============== */
+let chP,PT=1;const PAL=['#1e78c8','#0b2a4a','#2e9e5b','#ee8a2a','#8e44ad','#d63a3a'];
 function upsert(ch,id,type,labels,data,label,color){
  if(ch){ch.data.labels=labels;ch.data.datasets[0].data=data;ch.update();return ch;}
  return new Chart($(id),{type,data:{labels,datasets:[{label,data,backgroundColor:color,borderColor:color,borderRadius:6,tension:.3}]},
@@ -282,7 +290,15 @@ function drawCharts(){
  const days=[...Array(7)].map((_,i)=>{const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-(6-i));return d;});
  chD=upsert(chD,'cDay','bar',days.map(d=>d.toLocaleDateString('th-TH',{day:'numeric',month:'short'})),
   days.map(d=>reports.filter(r=>key(new Date(r.Timestamp))===key(d)).length),'รายงาน','#1e78c8');
- chS=upsert(chS,'cDist','bar',DISTRICTS.map(d=>d[0]),DISTRICTS.map(d=>reports.filter(r=>r.District===d[0]).length),'รายงาน','#0b2a4a');}
+ chS=upsert(chS,'cDist','bar',DISTRICTS.map(d=>d[0]),DISTRICTS.map(d=>reports.filter(r=>r.District===d[0]).length),'รายงาน','#0b2a4a');
+ /* Donut: share of reports per district, filtered by water status */
+ const st=$('pst').value,rs=reports.filter(r=>!st||r.WaterStatus===st);
+ const pd=DISTRICTS.map(d=>rs.filter(r=>r.District===d[0]).length);PT=pd.reduce((a,b)=>a+b,0);
+ $('pEmpty').hidden=PT>0;$('cPie').parentElement.hidden=PT===0;$('pTot').textContent=PT?'รวม '+PT+' รายงาน'+(st?' · สถานะ'+st:' · ทุกสถานะ'):'';
+ if(PT>0){if(chP){chP.data.datasets[0].data=pd;chP.update();}
+  else chP=new Chart($('cPie'),{type:'doughnut',data:{labels:DISTRICTS.map(d=>d[0]),datasets:[{data:pd,backgroundColor:PAL,borderWidth:2}]},
+   options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:c=>c.label+': '+c.raw+' รายงาน ('+Math.round(c.raw*100/PT)+'%)'}}}}});}}
+$('pst').onchange=drawCharts;
 
 /* ============== SEARCH ============== */
 let SR=[];const norm=s=>String(s||'').toLowerCase().trim();
