@@ -70,6 +70,13 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
     <select id="fs" aria-label="สถานะ"><option value="">ทุกสถานะ</option><option>ปกติ</option><option>เฝ้าระวัง</option><option>น้ำท่วมขัง</option><option>น้ำท่วมหนัก</option><option>วิกฤต</option></select>
     <button class="p" id="refresh">🔄 รีเฟรช</button><button id="locate">📍 ใช้ตำแหน่งของฉัน</button>
    </div>
+   <div class="bar" id="glayers" role="group" aria-label="เลเยอร์ GISTDA" style="font-size:.85rem;align-items:center">
+    <b style="color:#8e44ad">🟣 GISTDA:</b>
+    <label><input type="checkbox" data-p="1day" checked> 1 วัน</label>
+    <label><input type="checkbox" data-p="3days"> 3 วัน</label>
+    <label><input type="checkbox" data-p="7days"> 7 วัน</label>
+    <label><input type="checkbox" data-p="30days"> 30 วัน</label>
+   </div>
    <div id="map" aria-label="แผนที่น้ำท่วม"></div>
    <p id="near" style="font-size:.85rem"></p>
    <small>🟢 ปกติ 🟡 เฝ้าระวัง 🟠 น้ำท่วม 🔴 หนัก/วิกฤต 🟣 GISTDA</small>
@@ -100,7 +107,7 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
 <script>
 /* ================= CONFIG ================= */
 const CONFIG={API_URL:'https://script.google.com/macros/s/AKfycbz-IfZeArtR3gSffaR1nq2epS7_b_UCDg9kzD6J-YXTIy_VwYn4NshMbE4aaP5FNk5iag/exec',DEFAULT_LAT:13.8621,DEFAULT_LNG:100.5144,DEFAULT_ZOOM:11,
- DEMO_MODE:false,REFRESH_MS:60000,COOLDOWN_MS:120000,MAX_PHOTO_PX:1280};
+ DEMO_MODE:false,GISTDA_TILE_KEY:'HGvqZXMiytK1PtEHuLRDPAQQNA6p1MezTmxDMGcaV3m30xjYa3JssdNSk20ukv87',REFRESH_MS:60000,COOLDOWN_MS:120000,MAX_PHOTO_PX:1280};
 const DISTRICTS=[['เมืองนนทบุรี',13.8591,100.5217],['บางกรวย',13.8160,100.4850],['บางใหญ่',13.8590,100.4090],['บางบัวทอง',13.9100,100.4250],['ไทรน้อย',13.9930,100.3300],['ปากเกร็ด',13.9130,100.5000]];
 const LV={'ไม่มีน้ำ':0,'น้อยกว่า 10 ซม.':5,'10-30 ซม.':20,'31-50 ซม.':40,'51-100 ซม.':75,'มากกว่า 100 ซม.':120};
 const ST={'ปกติ':0,'เฝ้าระวัง':1,'น้ำท่วมขัง':2,'น้ำท่วมหนัก':3,'วิกฤต':3};
@@ -129,10 +136,7 @@ async function load(){
  $('upd').textContent='อัปเดตล่าสุด: '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
  render();loadGistda();}
 
-async function loadGistda(){
- if(CONFIG.DEMO_MODE)return;
- try{gistda=await api('getGistdaFlood',{range:'1day'});drawMap();}
- catch(e){Swal.fire({toast:true,position:'top',timer:3000,showConfirmButton:false,icon:'warning',title:'ไม่สามารถโหลดข้อมูล GISTDA ได้ในขณะนี้'});}}
+function loadGistda(){} // GISTDA is shown as map tiles (see initGistda); the JSON feature is national-scale and too large
 
 /* ============== RENDER ============== */
 const lvl=r=>LV[r.WaterLevel]??0, sc=r=>ST[r.WaterStatus]??0;
@@ -167,6 +171,26 @@ function drawMap(){if(!map)return;layer.clearLayers();const col=['#2e9e5b','#e8b
  filtered().forEach(r=>{if(!isFinite(r.Latitude))return;L.circleMarker([r.Latitude,r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9}).addTo(layer)
   .bindPopup(`<b>${esc(r.LocationName)}</b><br>${esc(r.District)}<br>${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>${hhmm(r.Timestamp)} · ${esc(r.Source)}`);});
  if(gistda&&gistda.type==='FeatureCollection')L.geoJSON(gistda,{style:{color:'#8e44ad',weight:1,fillOpacity:.35}}).addTo(layer);}
+
+
+/* ============== GISTDA TILE LAYERS ==============
+ * Uses a SECOND key restricted by HTTP referrer to your GitHub Pages domain (safe to expose).
+ * Keep the unrestricted key only in Apps Script Properties.
+ * Endpoint format from GISTDA open-data page; tile size/zoom offset may need adjusting (see README). */
+const GT={};let gWarned=false;
+function initGistda(){
+ const key=CONFIG.GISTDA_TILE_KEY;
+ document.querySelectorAll('#glayers input').forEach(cb=>{
+  cb.onchange=()=>setG(cb.dataset.p,cb.checked);
+  if(cb.checked)setG(cb.dataset.p,true);});}
+function setG(p,on){
+ const key=CONFIG.GISTDA_TILE_KEY;
+ if(on&&(!key||key.startsWith('YOUR_'))){Swal.fire({toast:true,position:'top',timer:4000,showConfirmButton:false,icon:'info',title:'ยังไม่ได้ตั้งค่า GISTDA_TILE_KEY'});return;}
+ if(!on){if(GT[p])map.removeLayer(GT[p]);return;}
+ if(!GT[p]){GT[p]=L.tileLayer('https://api-gateway.gistda.or.th/api/2.0/resources/maps/flood/'+p+'/tms/{z}/{x}/{y}?api_key='+encodeURIComponent(key),
+  {tileSize:512,zoomOffset:-1,opacity:.6,zIndex:5,maxZoom:19,attribution:'น้ำท่วมจากดาวเทียม © GISTDA'});
+  GT[p].on('tileerror',()=>{if(!gWarned){gWarned=true;Swal.fire({toast:true,position:'top',timer:4000,showConfirmButton:false,icon:'warning',title:'ไม่สามารถโหลดข้อมูล GISTDA ได้ในขณะนี้'});}});}
+ GT[p].addTo(map);}
 
 /* ============== GEO / NEARBY (Haversine) ============== */
 const hav=(a,b,c,d)=>{const R=6371,t=x=>x*Math.PI/180,dl=t(c-a),dn=t(d-b);const h=Math.sin(dl/2)**2+Math.cos(t(a))*Math.cos(t(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));};
@@ -212,7 +236,7 @@ $('rf').onsubmit=async e=>{e.preventDefault();
 $('fd').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
 $('rdist').innerHTML=DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
 $('fd').onchange=$('fs').onchange=render;$('refresh').onclick=load;
-initMap();load();setInterval(load,CONFIG.REFRESH_MS);
+initMap();initGistda();load();setInterval(load,CONFIG.REFRESH_MS);
 </script>
 </body>
 </html>
