@@ -177,16 +177,29 @@ $('locate').onclick=()=>navigator.geolocation?navigator.geolocation.getCurrentPo
 
 /* ============== REPORT FORM ============== */
 $('fab').onclick=()=>{$('frm').showModal();};
-$('gps').onclick=()=>navigator.geolocation.getCurrentPosition(p=>{coord=[p.coords.latitude,p.coords.longitude];$('coord').textContent=coord.map(v=>v.toFixed(5)).join(', ');},()=>Swal.fire('ไม่สามารถอ่านตำแหน่งได้','','info'));
+/* Alerts must be shown outside the modal <dialog>, otherwise they are hidden behind it */
+async function alertOver(opts){const wasOpen=$('frm').open;if(wasOpen)$('frm').close();const r=await Swal.fire(opts);return{r,wasOpen};}
+$('gps').onclick=()=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>{coord=[p.coords.latitude,p.coords.longitude];$('coord').textContent=coord.map(v=>v.toFixed(5)).join(', ');},async()=>{const x=await alertOver({icon:'info',title:'ไม่สามารถอ่านตำแหน่งได้',text:'โปรดอนุญาตการเข้าถึงตำแหน่ง (ต้องเปิดผ่าน https)'});if(x.wasOpen)$('frm').showModal();}):0;
 function compress(file){return new Promise(res=>{if(!file)return res('');const img=new Image();img.onload=()=>{const k=Math.min(1,CONFIG.MAX_PHOTO_PX/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=img.width*k;c.height=img.height*k;c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.7));};img.src=URL.createObjectURL(file);});}
 $('rf').onsubmit=async e=>{e.preventDefault();
+ const reopen=async o=>{await Swal.fire(o);$('frm').showModal();}; // keep typed values, reopen form after alert
  const last=+localStorage.getItem('fl_last')||0;
- if(Date.now()-last<CONFIG.COOLDOWN_MS)return Swal.fire('กรุณารอสักครู่','ส่งรายงานได้ทุก 2 นาที','warning');
- if(!coord)return Swal.fire('ยังไม่มีพิกัด','กด "ใช้ตำแหน่งปัจจุบัน" ก่อนส่ง','warning');
- const data=Object.fromEntries(new FormData($('rf')));delete data.undefined;delete data.photo;
- data.latitude=coord[0];data.longitude=coord[1];data.photoBase64=await compress($('photo').files[0]);
- try{await api('submitReport',data,true);localStorage.setItem('fl_last',Date.now());$('frm').close();$('rf').reset();coord=null;Swal.fire('ส่งรายงานแล้ว','รอเจ้าหน้าที่ตรวจสอบ','success');load();}
- catch(err){Swal.fire(err.message==='demo'?'โหมด DEMO':'ส่งไม่สำเร็จ',err.message==='demo'?'ตั้งค่า API_URL และ DEMO_MODE=false ก่อน':err.message,'error');}};
+ if(Date.now()-last<CONFIG.COOLDOWN_MS){$('frm').close();return reopen({icon:'warning',title:'กรุณารอสักครู่',text:'ส่งรายงานได้ทุก 2 นาที'});}
+ if(!coord){$('frm').close();return reopen({icon:'warning',title:'ยังไม่มีพิกัด',text:'กดปุ่ม "ใช้ตำแหน่งปัจจุบัน" ก่อนส่ง'});}
+ const data=Object.fromEntries(new FormData($('rf')));delete data.photo;
+ data.latitude=coord[0];data.longitude=coord[1];
+ const btn=$('rf').querySelector('button[type=submit]');btn.disabled=true;
+ $('frm').close();
+ Swal.fire({title:'กำลังบันทึกข้อมูล...',html:'กรุณารอสักครู่ อย่าปิดหน้านี้',allowOutsideClick:false,allowEscapeKey:false,showConfirmButton:false,didOpen:()=>Swal.showLoading()});
+ try{
+  data.photoBase64=await compress($('photo').files[0]);
+  await api('submitReport',data,true);
+  localStorage.setItem('fl_last',Date.now());$('rf').reset();coord=null;$('coord').textContent='ยังไม่ได้ระบุพิกัด';
+  await Swal.fire({icon:'success',title:'ส่งรายงานเรียบร้อย',text:'ขอบคุณครับ รอเจ้าหน้าที่ตรวจสอบ'});load();
+ }catch(err){
+  const demoMsg=err.message==='demo';
+  await reopen({icon:'error',title:demoMsg?'ยังเป็นโหมด DEMO':'ส่งรายงานไม่สำเร็จ',text:demoMsg?'ตั้งค่า API_URL และ DEMO_MODE=false ใน index.html ก่อน':(err.message==='Failed to fetch'?'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตและ API_URL':err.message)});
+ }finally{btn.disabled=false;}};
 
 /* ============== INIT ============== */
 $('fd').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
