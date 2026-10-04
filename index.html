@@ -7,6 +7,7 @@
 <title>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{--navy:#0b2a4a;--blue:#1e78c8;--bg:#eef3f8;--card:#fff;--ink:#16263a;--mut:#5d6f84;
@@ -33,8 +34,8 @@ main{max-width:1200px;margin:auto;padding:16px}
 .t0{background:var(--c0)}.t1{background:var(--c1)}.t2{background:var(--c2)}.t3{background:var(--c3)}
 .bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 select,input,textarea,button{font:inherit;min-height:44px;border-radius:10px;border:1px solid #c5d3e2;padding:6px 10px}
-#glayers label{display:inline-flex;align-items:center;gap:6px;min-height:44px;cursor:pointer}
-#glayers input{min-height:0;width:20px;height:20px;padding:0}
+#glayers label,#vopts label{display:inline-flex;align-items:center;gap:6px;min-height:44px;cursor:pointer}
+#glayers input,#vopts input{min-height:0;width:20px;height:20px;padding:0}
 button.p{background:var(--blue);color:#fff;border:0;cursor:pointer}
 .fab{position:fixed;right:16px;bottom:16px;z-index:900;background:var(--c3);color:#fff;border:0;border-radius:99px;padding:12px 20px;box-shadow:0 6px 20px #0005;cursor:pointer}
 .sk{background:linear-gradient(90deg,#e3eaf2 25%,#f3f7fb 50%,#e3eaf2 75%);background-size:200% 100%;animation:sk 1.2s infinite;border-radius:12px;height:90px}
@@ -47,6 +48,7 @@ form label{display:block;margin:8px 0 2px;font-size:.85rem}form input,form selec
 #sres button{display:block;width:100%;text-align:left;background:#fff;margin:2px 0;cursor:pointer}
 .stats{display:grid;gap:12px;grid-template-columns:1fr;margin-top:16px}.cv{position:relative;height:240px}
 @media(min-width:992px){.stats{grid-template-columns:1fr 1fr}}
+.mc{display:flex;align-items:center;justify-content:center;border-radius:50%;color:#fff;font-weight:600;border:3px solid #fff;box-shadow:0 2px 8px #0006}.mc0{background:#2e9e5b}.mc1{background:#e8b923;color:#16263a}.mc2{background:#ee8a2a}.mc3{background:#d63a3a}
 footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
 @media(min-width:576px){.grid{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(4,1fr)}}
 @media(min-width:992px){.grid{grid-template-columns:repeat(3,1fr)}.two{grid-template-columns:1fr 1.3fr}}
@@ -90,6 +92,9 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
    </div>
    <form class="bar" id="sform" role="search"><input id="sq" type="search" placeholder="ค้นหาสถานที่ ตำบล อำเภอ ถนน" aria-label="ค้นหา" style="flex:1;min-width:160px" maxlength="80"><button class="p" type="submit">ค้นหา</button></form>
    <div id="sres" aria-live="polite"></div>
+   <div class="bar" id="vopts" role="group" aria-label="รูปแบบการแสดงผล" style="font-size:.85rem;align-items:center">
+    <b>มุมมอง:</b><label><input type="checkbox" id="vcl" checked> จัดกลุ่มหมุด</label><label><input type="checkbox" id="vht"> 🔥 Heatmap</label>
+   </div>
    <div class="bar" id="glayers" role="group" aria-label="เลเยอร์ GISTDA" style="font-size:.85rem;align-items:center">
     <b style="color:#8e44ad">🟣 GISTDA:</b>
     <label><input type="checkbox" data-p="1day" checked> 1 วัน</label>
@@ -138,6 +143,8 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
  <button onclick="adm.close()">ปิด</button>
 </dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -151,7 +158,7 @@ const LV={'ไม่มีน้ำ':0,'น้อยกว่า 10 ซม.':5,'
 const ST={'ปกติ':0,'เฝ้าระวัง':1,'น้ำท่วมขัง':2,'น้ำท่วมหนัก':3,'วิกฤต':3};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let reports=[],map,layer,gistda,coord=null,userLL=null,distLayer,searchMarker,chD,chS;
+let reports=[],map,layer,gistda,coord=null,userLL=null,cg,pg,hl,distLayer,searchMarker,chD,chS;
 
 /* ============== DEMO DATA ============== */
 function demo(){const n=Date.now();const d=(i,m,l,s,la,ln,loc)=>({ID:'D'+i,Timestamp:new Date(n-m*60000).toISOString(),District:DISTRICTS[i%6][0],SubDistrict:'-',LocationName:loc,Description:'DEMO DATA',WaterLevel:l,WaterStatus:s,Latitude:la,Longitude:ln,Source:'ประชาชน',Verified:true,Status:'ยืนยันแล้ว'});
@@ -211,11 +218,30 @@ function initMap(){map=L.map('map').setView([CONFIG.DEFAULT_LAT,CONFIG.DEFAULT_L
     click:()=>{$('fd').value=f.properties.name;render();}});}}).addTo(map);
  map.fitBounds(distLayer.getBounds());
  layer=L.layerGroup().addTo(map);}
-function drawMap(){if(!map)return;layer.clearLayers();const col=['#2e9e5b','#e8b923','#ee8a2a','#d63a3a'];
- filtered().forEach(r=>{if(!isFinite(r.Latitude))return;L.circleMarker([r.Latitude,r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9}).addTo(layer)
-  .bindPopup(`<b>${esc(r.LocationName)}</b><br>${esc(r.District)}<br>${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>${hhmm(r.Timestamp)} · ${esc(r.Source)}`);});
+function drawMap(){if(!map)return;layer.clearLayers();
+ const col=['#2e9e5b','#e8b923','#ee8a2a','#d63a3a'],cl=$('vcl').checked;
+ if(!pg){pg=L.layerGroup(); // plain markers; cg = clustered markers (falls back to plain if plugin failed to load)
+  cg=L.markerClusterGroup?L.markerClusterGroup({maxClusterRadius:50,showCoverageOnHover:false,
+   iconCreateFunction:c=>{const m=Math.max(...c.getAllChildMarkers().map(x=>x.options.sc||0));
+    return L.divIcon({html:'<span>'+c.getChildCount()+'</span>',className:'mc mc'+m,iconSize:[40,40]});}}):pg;}
+ cg.clearLayers();pg.clearLayers();
+ const target=(cl&&cg!==pg)?cg:pg;
+ [cg,pg].forEach(g=>{if(g!==target&&map.hasLayer(g))map.removeLayer(g);});
+ if(!map.hasLayer(target))target.addTo(map);
+ const rs=filtered().filter(r=>isFinite(r.Latitude)&&isFinite(r.Longitude));
+ rs.forEach(r=>L.circleMarker([+r.Latitude,+r.Longitude],{radius:9,color:'#fff',weight:2,fillColor:col[sc(r)],fillOpacity:.9,sc:sc(r)})
+  .bindPopup(`<b>${esc(r.LocationName)}</b><br>${esc(r.District)}<br>${esc(r.WaterLevel)} · ${esc(r.WaterStatus)}<br>${hhmm(r.Timestamp)} · ${esc(r.Source)}`).addTo(target));
+ drawHeat(rs,$('vht').checked);
  if(gistda&&gistda.type==='FeatureCollection')L.geoJSON(gistda,{style:{color:'#8e44ad',weight:1,fillOpacity:.35}}).addTo(layer);}
 
+/* Heatmap: weight from severity + water level. Falls back to translucent circles if leaflet.heat is unavailable */
+function drawHeat(rs,on){
+ if(!on){if(hl&&map.hasLayer(hl))map.removeLayer(hl);return;}
+ const pts=rs.map(r=>[+r.Latitude,+r.Longitude,Math.min(1,.3+sc(r)*.2+Math.min(lvl(r)/120,1)*.3)]);
+ if(L.heatLayer){if(!hl)hl=L.heatLayer(pts,{radius:28,blur:22,maxZoom:14,gradient:{.3:'#2e9e5b',.55:'#e8b923',.75:'#ee8a2a',1:'#d63a3a'}});hl.setLatLngs(pts);}
+ else{if(!hl)hl=L.layerGroup();hl.clearLayers();pts.forEach(p=>L.circle([p[0],p[1]],{radius:400+p[2]*800,stroke:false,fillColor:'#d63a3a',fillOpacity:.18}).addTo(hl));}
+ if(!map.hasLayer(hl))hl.addTo(map);}
+$('vcl').onchange=$('vht').onchange=drawMap;
 
 /* ============== GISTDA TILE LAYERS ==============
  * Uses a SECOND key restricted by HTTP referrer to your GitHub Pages domain (safe to expose).
