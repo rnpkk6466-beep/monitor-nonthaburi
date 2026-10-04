@@ -43,6 +43,7 @@ dialog{border:0;border-radius:16px;max-width:560px;width:94%;padding:18px}
 dialog::backdrop{background:#0b2a4a88}
 form label{display:block;margin:8px 0 2px;font-size:.85rem}form input,form select,form textarea{width:100%}
 .empty{text-align:center;color:var(--mut);padding:24px}
+#abody table{width:100%;border-collapse:collapse;font-size:.8rem}#abody th,#abody td{padding:6px;border-bottom:1px solid #e3eaf2;text-align:left;vertical-align:top}#abody button{min-height:36px;padding:2px 8px;margin:2px}
 footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
 @media(min-width:576px){.grid{grid-template-columns:repeat(2,1fr)}.kpis{grid-template-columns:repeat(4,1fr)}}
 @media(min-width:992px){.grid{grid-template-columns:repeat(3,1fr)}.two{grid-template-columns:1fr 1.3fr}}
@@ -85,7 +86,7 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
   </div>
  </section>
 </main>
-<footer>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขังจังหวัดนนทบุรี<br>ข้อมูลประกอบการติดตามสถานการณ์ ไม่ใช่ประกาศเตือนภัยอย่างเป็นทางการ · Data: GISTDA, OpenStreetMap</footer>
+<footer>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขังจังหวัดนนทบุรี<br>ข้อมูลประกอบการติดตามสถานการณ์ ไม่ใช่ประกาศเตือนภัยอย่างเป็นทางการ · Data: GISTDA, OpenStreetMap<br><button id="admlink" style="min-height:44px;background:none;border:0;color:#5d6f84;text-decoration:underline;cursor:pointer">สำหรับเจ้าหน้าที่</button></footer>
 <button class="fab" id="fab">+ รายงานน้ำท่วม</button>
 
 <dialog id="dlg"><div id="dbody"></div><button onclick="dlg.close()">ปิด</button></dialog>
@@ -104,6 +105,21 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
  <button class="p" type="submit">ส่งรายงาน</button> <button type="button" onclick="frm.close()">ยกเลิก</button>
 </form></dialog>
 
+<dialog id="adm" style="max-width:1100px">
+ <form id="alogin"><h3 style="margin-top:0">เข้าสู่ระบบเจ้าหน้าที่</h3>
+  <label>ชื่อผู้ใช้<input id="au" autocomplete="username" required></label>
+  <label>รหัสผ่าน<input id="ap" type="password" autocomplete="current-password" required></label>
+  <p><button class="p" type="submit">เข้าสู่ระบบ</button></p></form>
+ <div id="apanel" hidden>
+  <h3 style="margin-top:0">จัดการรายงาน <small id="who" style="font-weight:400"></small></h3>
+  <div class="bar"><select id="as"><option value="">ทุกสถานะ</option><option>รอตรวจสอบ</option><option>ยืนยันแล้ว</option><option>ไม่ถูกต้อง</option><option>ปิดเหตุการณ์</option></select>
+   <select id="ad"></select><input id="aq" placeholder="ค้นหาสถานที่/ชื่อ" aria-label="ค้นหา">
+   <button id="acsv">⬇ Export CSV</button><button id="alogout">ออกจากระบบ</button></div>
+  <div id="abody" style="overflow-x:auto;max-height:55vh"></div>
+ </div>
+ <p id="amsg" role="status" style="color:#d63a3a"></p>
+ <button onclick="adm.close()">ปิด</button>
+</dialog>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
@@ -241,6 +257,43 @@ $('rf').onsubmit=async e=>{e.preventDefault();
   const demoMsg=err.message==='demo';
   await reopen({icon:'error',title:demoMsg?'ยังเป็นโหมด DEMO':'ส่งรายงานไม่สำเร็จ',text:demoMsg?'ตั้งค่า API_URL และ DEMO_MODE=false ใน index.html ก่อน':(err.message==='Failed to fetch'?'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจสอบอินเทอร์เน็ตและ API_URL':err.message)});
  }finally{btn.disabled=false;}};
+
+
+/* ============== ADMIN ============== */
+let TOK=sessionStorage.getItem('fl_tok')||'',AROWS=[],AROLE=sessionStorage.getItem('fl_role')||'';
+const aapi=(a,p={})=>api(a,{...p,token:TOK},true);
+const amsg=t=>{$('amsg').textContent=t||'';};
+function showAdm(){$('alogin').hidden=!!TOK;$('apanel').hidden=!TOK;if(TOK){$('who').textContent='('+AROLE+')';loadAdmin();}}
+$('admlink').onclick=()=>{$('adm').showModal();showAdm();};
+$('ad').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
+function logout(){TOK='';AROLE='';sessionStorage.clear();AROWS=[];showAdm();}
+$('alogout').onclick=logout;
+$('alogin').onsubmit=async e=>{e.preventDefault();amsg('กำลังเข้าสู่ระบบ...');
+ try{const r=await api('login',{username:$('au').value,password:$('ap').value},true);
+  TOK=r.token;AROLE=r.role;sessionStorage.setItem('fl_tok',TOK);sessionStorage.setItem('fl_role',AROLE);$('ap').value='';amsg('');showAdm();}
+ catch(err){amsg(err.message==='demo'?'ยังเป็นโหมด DEMO (ตั้งค่า API_URL และ DEMO_MODE=false)':err.message);}};
+async function loadAdmin(){amsg('กำลังโหลด...');$('abody').innerHTML='<div class="sk"></div>';
+ try{AROWS=await aapi('adminGetReports');amsg('');renderAdmin();}
+ catch(err){if(/เข้าสู่ระบบ/.test(err.message))logout();amsg(err.message);}}
+function afiltered(){const s=$('as').value,d=$('ad').value,q=$('aq').value.trim().toLowerCase();
+ return AROWS.filter(r=>(!s||r.Status===s)&&(!d||r.District===d)&&(!q||JSON.stringify([r.LocationName,r.ReporterName,r.SubDistrict,r.Description]).toLowerCase().includes(q)));}
+function renderAdmin(){const rows=afiltered();
+ if(!rows.length){$('abody').innerHTML='<div class="empty">🌤️<br>ไม่พบรายงาน</div>';return;}
+ const can=AROLE==='OFFICER'||AROLE==='ADMIN';
+ $('abody').innerHTML='<table><thead><tr><th>เวลา</th><th>อำเภอ/สถานที่</th><th>ระดับน้ำ</th><th>ผู้รายงาน</th><th>สถานะ</th><th>จัดการ</th></tr></thead><tbody>'+rows.map(r=>`<tr><td>${new Date(r.Timestamp).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'})}</td><td><b>${esc(r.District)}</b><br>${esc(r.LocationName)}<br><small>${esc(r.Description)}</small>${/^https:\/\//.test(r.PhotoURL||'')?` <a href="${esc(r.PhotoURL)}" target="_blank" rel="noopener">รูป</a>`:''}</td><td>${esc(r.WaterLevel)}<br>${esc(r.WaterStatus)}</td><td>${esc(r.ReporterName)}<br>${esc(String(r.Phone||'').replace(/^'/,''))}</td><td>${esc(r.Status)}</td><td>${can?`<button data-id="${esc(r.ID)}" data-st="ยืนยันแล้ว">✔ ยืนยัน</button><button data-id="${esc(r.ID)}" data-st="ไม่ถูกต้อง">✖ ไม่ถูกต้อง</button><button data-id="${esc(r.ID)}" data-st="ปิดเหตุการณ์">ปิดเหตุการณ์</button>`:''}${AROLE==='ADMIN'?`<button data-id="${esc(r.ID)}" data-del="1" style="color:#d63a3a">🗑 ลบ</button>`:''}</td></tr>`).join('')+'</tbody></table>';}
+$('abody').onclick=async e=>{const b=e.target.closest('button');if(!b)return;const id=b.dataset.id;
+ try{
+  if(b.dataset.del){if(!confirm('ลบรายงานนี้ถาวร?'))return;amsg('กำลังลบ...');await aapi('deleteReport',{id});AROWS=AROWS.filter(r=>r.ID!==id);}
+  else if(b.dataset.st){amsg('กำลังบันทึก...');await aapi('updateReport',{id,status:b.dataset.st});const r=AROWS.find(x=>x.ID===id);if(r){r.Status=b.dataset.st;r.Verified=b.dataset.st==='ยืนยันแล้ว';}}
+  else return;
+  amsg('บันทึกแล้ว ✔');renderAdmin();load();
+ }catch(err){amsg(err.message);if(/เข้าสู่ระบบ/.test(err.message))logout();}};
+$('as').onchange=$('ad').onchange=renderAdmin;$('aq').oninput=renderAdmin;
+$('acsv').onclick=()=>{const rows=afiltered();if(!rows.length)return amsg('ไม่มีข้อมูลให้ส่งออก');
+ const cols=['ID','Timestamp','District','SubDistrict','LocationName','Description','WaterLevel','WaterStatus','Latitude','Longitude','ReporterName','Phone','Source','Status','Verified','PhotoURL'];
+ const cell=v=>{v=String(v??'').replace(/^'/,'');if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};
+ const csv='\ufeff'+[cols.join(',')].concat(rows.map(r=>cols.map(c=>cell(r[c])).join(','))).join('\r\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='flood-reports-'+new Date().toISOString().slice(0,10)+'.csv';a.click();};
 
 /* ============== INIT ============== */
 $('fd').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
