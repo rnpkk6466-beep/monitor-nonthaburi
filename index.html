@@ -6,6 +6,12 @@
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</title>
 <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b2a4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="น้ำท่วมนนท์">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
 <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&display=swap" rel="stylesheet">
@@ -58,6 +64,7 @@ footer{text-align:center;font-size:.75rem;color:var(--mut);padding:20px}
 <body>
 <header>
  <div><h1>ระบบรายงานและติดตามสถานการณ์น้ำท่วมขัง จังหวัดนนทบุรี</h1><small>Nonthaburi Flood Monitoring &amp; Reporting Dashboard</small></div>
+ <button id="install" class="p" hidden style="min-height:44px">📲 ติดตั้งแอป</button>
  <div class="stat"><span id="online" class="dot">● ระบบออนไลน์</span><br><span id="upd">อัปเดตล่าสุด: -</span></div>
 </header>
 <main>
@@ -403,6 +410,12 @@ $('acsv').onclick=()=>{const rows=afiltered();if(!rows.length)return amsg('ไ�
  const cell=v=>{v=String(v??'').replace(/^'/,'');if(/^[=+\-@]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};
  const csv='\ufeff'+[cols.join(',')].concat(rows.map(r=>cols.map(c=>cell(r[c])).join(','))).join('\r\n');
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='flood-reports-'+new Date().toISOString().slice(0,10)+'.csv';a.click();};
+
+/* ============== PWA ============== */
+if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+let dip;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dip=e;$('install').hidden=false;});
+$('install').onclick=async()=>{if(!dip)return;dip.prompt();await dip.userChoice;dip=null;$('install').hidden=true;};
+window.addEventListener('appinstalled',()=>{$('install').hidden=true;});
 
 /* ============== INIT ============== */
 $('fd').innerHTML='<option value="">ทุกอำเภอ</option>'+DISTRICTS.map(d=>`<option>${d[0]}</option>`).join('');
